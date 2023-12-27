@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<head>
+<title>Luxo Lamp</title>
+<script src="https://csc-vu.github.io/lib/three.js"></script>
+<!--<script src="https://csc-vu.github.io/lib/KeyboardState.js"></script>-->
+<script src="https://csc-vu.github.io/lib/OrbitControls.js"></script>
+
+<script>
+   var scene, camera, renderer; // Three.js rendering basics.
+
+    var canvas; // The canvas on which the image is rendered.
+
+    var mouse; // Used to navigate the scene with the mouse
+
+    var eyeLight;
+
+    //var keyboard = new KeyboardState();
+
+    // Global Luxo object
+    var luxo;
+
+    // The parts of our lamp
+    var luxoBase, luxoLowerArm, luxoUpperArm, luxoShade, luxoShadeSpotlight; 
+
+    // TODO Step 8: Define and initialize the keyframes array here
+
+    // Use a clock to keep track of time (clock starts automatically)
+    var clock = new THREE.Clock();
+
+    // Time at the beginning of animation 
+    var startTime = clock.getElapsedTime();
+
+    // timestamp, lamp.x, lamp.y, lamp.z, base.rotation.z, lower.rotation.x, lower.rotation.y, lower.rotation.z, upper.rotation.x, upper.rotation.y, upper.rotation.z, shade.rotation.x, shade.rotation.y, shade.rotation.z, spotlight.rotation.x, spotlight.rotation.y, spotlight.rotation.z
+    var keyframes = [
+        [0, -20, 0, 0, 0, 0, 0, 1.68, 0, 0, -2.87, 0, 0, -0.3, 0, 0, 0],
+
+        [0.1, -15, 4, 0, -0.29, 0, 0, -0.16, 0, 0, -0.16, 0, 0, -1.87, 0, 0, 0],
+
+        [0.2, -10, 8, 0, 0, 0, 0, 1.68, 0, 0, -2.87, 0, 0, -0.3, 0, 0, 0],
+
+        [0.3, -5, 4, 0, 0.29, 0, 0, 0, 0, 0, -0.16, 0, 0, -1.5, 0, 0, 0],
+
+        [0.4, 0, 0, 0, 0, 0, 0, -0.3, 0, 0, -0.8, 0, 0, -1, 0, 0, 0],
+
+        [0.5, 0, 0, 0, 0, 0, 0, -0.1, 0, 0, -0.6, 0, 0, -0.8, 0, 0, 0],
+
+        [0.6, 0, 0, 0, 0, 0, 0, -0.4, 0, 0, -0.9, 0, 0, -1.1, 0, 0, 0],
+
+        [0.7, 0, 0, 0, 0, 0, -0.25, -0.4, 0, -0.25, -0.9, 0, -0.5, -1.1, 0, 0, 0],
+
+        [0.8, 0, 0, 0, 0, 0, 0.25, -0.4, 0, 0.25, -0.9, 0, 0.5, -1.1, 0, 0, 0],
+
+        [0.9, 0, 0, 0, 0, 0, -0.25, -0.4, 0, -0.25, -0.9, 0, -0.5, -1.1, 0, 0, 0],
+
+        [1, 0, 0, 0, 0, 0, 0.25, -0.4, 0, 0.25, -0.9, 0, 0.5, -1.1, 0, 0, 0],
+    ];
+
+    /*
+    //timestamp, ball.x, ball.y, ball.z, ball.rotation.z
+    var keyframes2 = [
+        [0, -10, 2, 22, -0.3], 
+
+        [0.25, -5, 2, 22, -0.6], 
+
+        [0.5, 0, 2, 22, -0.9], 
+
+        [0.75, 5, 2, 22, -1.2], 
+
+        [1, 10, 2, 22, -1.5],
+    ];
+    */
+
+    // TODO Step 9: Copy and paste the keyframeInterp function here
+    function keyframeInterp(keyframes, cycleTime, animTime) {
+
+        var keys=[];  // array of interpolated values
+        var nKeys = keyframes[0].length-1;  // number of keys
+
+        // find time elapsed within the current cycle and scale to [0,1]
+        var time = (animTime % cycleTime) / cycleTime; 
+    
+        // find the next keyframe based on time
+        for (var i = 0; i < keyframes.length; i++) {
+            if (time < keyframes[i][0]) break;
+        }
+        i = i-1; // previous keyframe is at index i-1
+
+        // scale interpolation parameter t to interval [0,1]
+        var t = (time - keyframes[i][0]) / (keyframes[i+1][0] - keyframes[i][0]);
+    
+        // linear interpolation between keyframes i and i+1 
+        for(var j = 1; j <= nKeys; j++)
+            keys.push((1-t) * keyframes[i][j] + t * keyframes[i+1][j]); 
+
+        return keys;
+    }
+
+    // Create a camera, sitting on the positive z-axis.  The camera is not part of the scene
+    function createCamera() {
+        camera = new THREE.PerspectiveCamera(40, canvas.width/canvas.height, 0.1, 500);
+        camera.position.set(0,3,40);
+
+        // Add orbit control to allow the camera orbit around
+        mouse = new THREE.OrbitControls(camera, renderer.domElement);
+    }
+
+    // Create the lamp base with specified radius and height
+    function createBase(radius, height)
+    {
+        var base = new THREE.Object3D();
+        base.name = "base";
+
+        var mat = new THREE.MeshPhongMaterial( { color: "gray" } );
+
+        // SphereGeometry(radius, horizSeg, vertSeg, horizStartAng, horizLenAngle, vertStartAng, vertLenAng )
+        var geom = new THREE.SphereGeometry(radius, 32, 32, 0, 2*Math.PI, 0, Math.PI/2 );
+        var mesh = new THREE.Mesh(geom, mat);
+        mesh.scale.y = height/radius;
+        mesh.position.y = -height;
+        base.add(mesh);
+
+        // CircleGeometry(radius, segments) 
+        var capGeom = new THREE.CircleGeometry(radius, 32);
+        var capMesh = new THREE.Mesh(capGeom, mat);
+        capMesh.rotation.x = Math.PI / 2;
+        mesh.add(capMesh);
+
+        return base; 
+    }
+
+    // Create a lamp arm with specified radius and height
+    function createArm(radius, height)
+    {
+        var arm = new THREE.Object3D();
+
+        var mat = new THREE.MeshPhongMaterial( { color: "skyblue" } );
+
+        // CylinderGeometry(radiusTop, radiusBottom, height) 
+        var geom = new THREE.CylinderGeometry(radius, radius, height, 64, 64);
+        var mesh = new THREE.Mesh(geom, mat);
+        mesh.position.y += height/2;
+        arm.add(mesh);
+
+        return arm;
+    }
+
+    // Create the lamp shade with specified radius and height
+    function createShade(radius, height)
+    {
+        var shade = new THREE.Object3D();
+
+        var mat = new THREE.MeshPhongMaterial( { color: 0xFF7F50, side: THREE.DoubleSide } ); 
+
+         // ConeGeometry(radius, height, radialSeg, heightSeg, open?) 
+        var geom = new THREE.ConeGeometry(radius, height, 16, 1, true);
+        var mesh = new THREE.Mesh(geom, mat);
+        mesh.position.y += height/2;
+        mesh.rotation.z = Math.PI;
+        shade.add(mesh);        
+
+        // TODO Step 7: add a spotlight
+        // SpotLight (color, intensity)
+        var spotLight = new THREE.SpotLight("white", 0.8);
+
+        // set spotlight position, direction and angle
+        spotLight.position.set(0, 0, 0);            // position, relative to parent shade
+        spotLight.target.position.set(0,height,0);  // direction, relative to parent shade
+        spotLight.angle = Math.atan(radius/height); // to match the shade angle 
+        spotLight.penumbra = 0.1;                   // outer 10% of spotlight cone fades out
+
+        // add both spotlight and its target to the scene
+        shade.add(spotLight);
+        shade.add(spotLight.target);
+
+        shade.children[1].visible = true; // or false
+
+        return shade;
+    }
+
+  // Create the Luxo object using the base, arm and shade parts
+    function createLuxo() {
+
+        var baseRadius = 3.5;
+        var baseHeight = 1.2;
+        var armRadius = 0.5;
+        var armHeight = 5;
+        var shadeRadius = 2.5;
+        var shadeHeight = 4; 
+
+        // Build the lamp parts
+        var base = createBase(baseRadius, baseHeight);
+        var lowerArm = createArm(armRadius, armHeight);
+        var upperArm = createArm(armRadius, armHeight);
+        var shade = createShade(shadeRadius, shadeHeight);
+
+        // Build the lamp hierarchal structure 
+        var lamp = new THREE.Object3D();
+        lamp.add(base);         // add base as a child of lamp    
+        lamp.add(lowerArm);   // add lowerArm as a child of lamp (not base, base can rotate independently)
+        lowerArm.add(upperArm); // add upperArm as a child of lowerArm
+        upperArm.add(shade);    // add shade as a child of upperArm
+  
+        // Position children relative to parents
+        base.position.y += baseHeight;
+        lowerArm.position.y += baseHeight;
+        upperArm.position.y += armHeight;
+        shade.position.y += armHeight;
+
+        return lamp;
+    }
+
+    // Create table for Luxo to sit on
+    function createTable(size) {
+        var geometry = new THREE.PlaneGeometry( size, size );
+        var material = new THREE.MeshPhongMaterial({color: 0xCCAAAA, side: THREE.DoubleSide});
+        var plane = new THREE.Mesh( geometry, material );
+        plane.rotation.x = Math.PI/2; 
+        return plane;
+    }
+
+    // Create the scene. This function is called once, as soon as the page loads.
+    // The renderer has already been created before this function is called.
+    function createScene() {
+        
+        renderer.setClearColor(0); // Set background color (0, or 0x000000, is black).
+        scene = new THREE.Scene(); // Create a new scene which we can add objects to.
+
+        // create the Luxo lamp and add it to the scene
+        luxo = createLuxo(); // luxo is global
+        scene.add(luxo);        
+
+        // retrieve Luxo parts
+        luxoBase = luxo.children[0];
+        luxoLowerArm = luxo.children[1];
+        luxoUpperArm = luxoLowerArm.children[1];
+        luxoShade = luxoUpperArm.children[1];
+        luxoShadeSpotlight = luxoShade.children[1];
+
+        // rotate Luxo parts
+        luxoLowerArm.rotation.z -= 0.3;
+        luxoUpperArm.rotation.z -= 0.8;
+        luxoShade.rotation.z -= 1.4; 
+
+        // position Luxo in the scene
+        luxo.position.set(-15, 0, 0);
+        luxo.rotation.y = -0.3;
+
+        // add table for Luxo to sit on
+        tableSize = 100;
+        var table = createTable(tableSize);
+        scene.add( table );
+
+        // lower both Luxo and the plane, for a better view
+        luxo.position.y -= 4;
+        //table.position.y -= 4;
+
+     }
+ 
+    // add lights to the scene
+    function createLights()
+    {
+        // TODO Step 5: add a directional light to shine in the direction the camera faces
+        // DirectionalLight (color, intensity)
+        eyeLight = new THREE.DirectionalLight("white", 0.8); 
+        eyeLight.position.set(camera.position.x, camera.position.y, camera.position.z );
+        scene.add(eyeLight);
+ 
+        // TODO Step 6: add a dim light shining from above
+        // DirectionalLight (color, intensity)
+        var topLight = new THREE.DirectionalLight( "white", 0.5 ); 
+        topLight.position.set(0, 50, 40);
+        scene.add( topLight );
+    }
+
+    function update() {
+        mouse.update();
+        eyeLight.position.set(camera.position.x, camera.position.y, camera.position.z );
+    }
+
+
+    // Render the scene. This is called for each frame of the animation.
+    function render() {
+
+        // Loop
+        requestAnimationFrame(render);
+
+        // TODO Step 8: animation; code for things to change here
+        update();
+
+        var keys = keyframeInterp(keyframes, 10, clock.getElapsedTime() - startTime);
+
+        //var keys2 = keyframeInterp(keyframes2, 6, clock.getElapsedTime() - startTime);
+
+        // update rotations and positions based on key values
+        luxo.position.x = keys[0];
+        luxo.position.y = keys[1];
+        luxo.position.z = keys[2]
+        luxoBase.rotation.z = keys[3];
+        luxoLowerArm.rotation.x = keys[4];
+        luxoLowerArm.rotation.y = keys[5];
+        luxoLowerArm.rotation.z = keys[6];
+        luxoUpperArm.rotation.x = keys[7];
+        luxoUpperArm.rotation.y = keys[8];
+        luxoUpperArm.rotation.z = keys[9];
+        luxoShade.rotation.x = keys[10];
+        luxoShade.rotation.y = keys[11];
+        luxoShade.rotation.z = keys[12];
+        luxoShadeSpotlight.rotation.x = keys[13];
+        luxoShadeSpotlight.rotation.y = keys[14];
+        luxoShadeSpotlight.rotation.z = keys[15];
+
+        // ball.position.x = keys2[0];
+        // ball.position.y = keys2[1];
+        // ball.position.z = keys2[2];
+        // ball.rotation.x = keys2[3];
+
+        // Re-render the scene
+        renderer.render(scene, camera);
+
+        //update();
+    }
+
+    //----------------------------------------------------------------------------------
+
+    // The init() function is called by the onload event when the document has loaded.
+    function init() {
+        try {
+            canvas = document.getElementById("glcanvas");
+            renderer = new THREE.WebGLRenderer( { canvas: canvas, antialias: true} );
+        }
+        catch (e) {
+            document.getElementById("canvas-holder").innerHTML = "<h3><b>WebGL is not available.</b><h3>";
+            return;
+        }
+    
+        // create camera
+        createCamera();
+        
+        // create scene 
+        createScene();
+
+        // create lights 
+        createLights();
+
+        // render scene
+        render();
+    }
+
+</script>
+
+</head>
+<body onload="init()">
+<div id="canvas-holder">
+    <canvas id="glcanvas" width="600" height="400"></canvas>
+</div>
+</body>
+</html>
